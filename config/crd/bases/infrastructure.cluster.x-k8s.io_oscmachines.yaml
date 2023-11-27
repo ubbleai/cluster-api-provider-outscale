@@ -34,11 +34,6 @@ spec:
           spec:
             description: OscMachineSpec defines the desired state of OscMachine
             properties:
-              failureDomain:
-                description: FailureDomain is the failure domain unique identifier
-                  this Machine should be attached to, as defined in Cluster API. For
-                  this infrastructure provider, the ID is equivalent to a subnet name.
-                type: string
               node:
                 properties:
                   clusterName:
@@ -88,6 +83,8 @@ spec:
                           - privateIp
                           type: object
                         type: array
+                      publicIp:
+                        type: boolean
                       publicIpName:
                         type: string
                       replica:
@@ -241,6 +238,15 @@ spec:
                         type: object
                     type: object
                   linkPublicIpRef:
+                    description: Map between resourceId and resourceName (tag Name
+                      with cluster UID)
+                    properties:
+                      resourceMap:
+                        additionalProperties:
+                          type: string
+                        type: object
+                    type: object
+                  publicIpIdRef:
                     description: Map between resourceId and resourceName (tag Name
                       with cluster UID)
                     properties:
