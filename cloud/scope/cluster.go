@@ -36,6 +36,11 @@ import (
 
 const clusterUIDLabel = "outscale.com/clusterUID"
 
+//go:generate ../../bin/mockgen -destination mock_scope/cluster_mock.go -package mock_scope -source ./cluster.go
+type ClusterScopeInterface interface {
+	ListMachines(ctx context.Context) ([]*clusterv1.Machine, []*infrastructurev1beta1.OscMachine, error)
+}
+
 // ClusterScopeParams is a collection of input parameters to create a new scope
 type ClusterScopeParams struct {
 	OscClient  *OscClient
@@ -84,7 +89,7 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 
 	return &ClusterScope{
 		Logger:      params.Logger,
-		client:      params.Client,
+		Client:      params.Client,
 		Cluster:     params.Cluster,
 		OscCluster:  params.OscCluster,
 		OscClient:   params.OscClient,
@@ -95,7 +100,7 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 // ClusterScope is the basic context of the actuator that will be used
 type ClusterScope struct {
 	logr.Logger
-	client      client.Client
+	Client      client.Client
 	patchHelper *patch.Helper
 	OscClient   *OscClient
 	Cluster     *clusterv1.Cluster
@@ -223,6 +228,14 @@ func (s *ClusterScope) GetPublicIpRef() *infrastructurev1beta1.OscResourceRefere
 // LinkRouteTablesRef get the status of route associate with a routeTables (a Map with tag name with cluster uid associate with resource response id)
 func (s ClusterScope) GetLinkRouteTablesRef() map[string][]string {
 	return s.OscCluster.Status.Network.LinkRouteTableRef
+}
+
+// SetFailureDomain sets the infrastructure provider failure domain key to the spec given as input.
+func (s *ClusterScope) SetFailureDomain(id string, spec clusterv1.FailureDomainSpec) {
+	if s.OscCluster.Status.FailureDomains == nil {
+		s.OscCluster.Status.FailureDomains = make(clusterv1.FailureDomains)
+	}
+	s.OscCluster.Status.FailureDomains[id] = spec
 }
 
 // SetLinkRouteTableRef set the status of route associate with a routeTables (a Map with tag name with cluster uid associate with resource response id)
@@ -389,7 +402,7 @@ func (s *ClusterScope) PatchObject() error {
 func (s *ClusterScope) ListMachines(ctx context.Context) ([]*clusterv1.Machine, []*infrastructurev1beta1.OscMachine, error) {
 	var machineListRaw clusterv1.MachineList
 	var machineByOscMachineName = make(map[string]*clusterv1.Machine)
-	if err := s.client.List(ctx, &machineListRaw, client.InNamespace(s.GetNamespace())); err != nil {
+	if err := s.Client.List(ctx, &machineListRaw, client.InNamespace(s.GetNamespace())); err != nil {
 		return nil, nil, err
 	}
 	expectedGk := infrastructurev1beta1.GroupVersion.WithKind("OscMachine").GroupKind()
@@ -402,7 +415,7 @@ func (s *ClusterScope) ListMachines(ctx context.Context) ([]*clusterv1.Machine, 
 		machineByOscMachineName[m.Spec.InfrastructureRef.Name] = m
 	}
 	var oscMachineListRaw infrastructurev1beta1.OscMachineList
-	if err := s.client.List(ctx, &oscMachineListRaw, client.InNamespace(s.GetNamespace())); err != nil {
+	if err := s.Client.List(ctx, &oscMachineListRaw, client.InNamespace(s.GetNamespace())); err != nil {
 		return nil, nil, err
 	}
 	machineList := make([]*clusterv1.Machine, 0, len(oscMachineListRaw.Items))
