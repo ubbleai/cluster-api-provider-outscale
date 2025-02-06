@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -306,7 +307,7 @@ func reconcileSecurityGroupRule(ctx context.Context, clusterScope *scope.Cluster
 
 			Flow := securityGroupRuleSpec.Flow
 			IpProtocol := securityGroupRuleSpec.IpProtocol
-			IpRange := securityGroupRuleSpec.IpRange
+			IpRanges := strings.Split(securityGroupRuleSpec.IpRange, ",")
 			FromPortRange := securityGroupRuleSpec.FromPortRange
 			ToPortRange := securityGroupRuleSpec.ToPortRange
 			associateSecurityGroupId := securityGroupsRef.ResourceMap[securityGroupName]
@@ -322,24 +323,56 @@ func reconcileSecurityGroupRule(ctx context.Context, clusterScope *scope.Cluster
 			}
 
 			// The GetSecurityGroupFromSecurityGroupRule function does not work for Rules containing a targetSecurityGroupId, for now we just try to create and ignore if it already exists (error 409)
-			// clusterScope.V(4).Info("Check if the desired securityGroupRule exist", "securityGroupRuleName", securityGroupRuleName)
-			// securityGroupFromSecurityGroupRule, err := securityGroupSvc.GetSecurityGroupFromSecurityGroupRule(associateSecurityGroupId, Flow, IpProtocol, IpRange, targetSecurityGroupId, FromPortRange, ToPortRange)
-			// if err != nil {
-			// 	return reconcile.Result{}, err
-			// }
-			// if securityGroupFromSecurityGroupRule == nil {
-			// 	clusterScope.V(4).Info("Create the desired securityGroupRule", "securityGroupRuleName", securityGroupRuleName)
-			// 	securityGroupFromSecurityGroupRule, err = securityGroupSvc.CreateSecurityGroupRule(associateSecurityGroupId, Flow, IpProtocol, IpRange, targetSecurityGroupId, FromPortRange, ToPortRange)
-			// 	if err != nil {
-			// 		return reconcile.Result{}, fmt.Errorf("%w cannot create securityGroupRule for OscCluster %s/%s", err, clusterScope.GetNamespace(), clusterScope.GetName())
+			clusterScope.V(4).Info("Check if the desired securityGroupRule exist", "securityGroupRuleName", securityGroupRuleName)
+			securityGroup, err := securityGroupSvc.GetSecurityGroup(associateSecurityGroupId)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+
+			var rules []osc.SecurityGroupRule
+			if Flow == "Inbound" {
+				rules = *securityGroup.InboundRules
+			} else {
+				rules = *securityGroup.OutboundRules
+			}
+			existingIpRanges := []string{}
+			existingSecurityGroupIds := []string{}
+			for _, rule := range rules {
+				if rule.IpProtocol == &IpProtocol && rule.FromPortRange == &FromPortRange && rule.ToPortRange == &ToPortRange {
+					existingIpRanges = append(existingIpRanges, *rule.IpRanges...)
+					securityGroupMembers := *rule.SecurityGroupsMembers
+					for _, securityGroupMember := range securityGroupMembers {
+						existingSecurityGroupIds = append(existingSecurityGroupIds, *securityGroupMember.SecurityGroupId)
+					}
+				}
+			}
+
+			// This can't work in the currect Outscale api setup. If we have multiple rules where only the ipranges differ, then only one of them will persist.
+			// ipRangesToDelete := []string{}
+			// for i := range existingIpRanges {
+			// 	if !slices.Contains(IpRanges, existingIpRanges[i]) {
+			// 		ipRangesToDelete = append(ipRangesToDelete, existingIpRanges[i])
 			// 	}
 			// }
+			// clusterScope.V(2).Info("Delete the desired securityGroupRule", "securityGroupRuleName", securityGroupRuleName)
+			// err = securityGroupSvc.DeleteSecurityGroupRule(associateSecurityGroupId, Flow, IpProtocol, strings.Join(ipRangesToDelete, ","), "", FromPortRange, ToPortRange)
+			// if err != nil {
+			// 	return reconcile.Result{}, fmt.Errorf("%s cannot delete securityGroupRule for OscCluster %s/%s", err, clusterScope.GetNamespace(), clusterScope.GetName())
+			// }
+
+			ipRangesToAdd := []string{}
+			for i := range IpRanges {
+				if !slices.Contains(existingIpRanges, IpRanges[i]) {
+					ipRangesToAdd = append(ipRangesToAdd, IpRanges[i])
+				}
+			}
 			clusterScope.V(4).Info("Create the desired securityGroupRule", "securityGroupRuleName", securityGroupRuleName)
-			securityGroupFromSecurityGroupRule, err := securityGroupSvc.CreateSecurityGroupRule(associateSecurityGroupId, Flow, IpProtocol, IpRange, targetSecurityGroupId, FromPortRange, ToPortRange)
+			securityGroup, err = securityGroupSvc.CreateSecurityGroupRule(associateSecurityGroupId, Flow, IpProtocol, strings.Join(ipRangesToAdd, ","), targetSecurityGroupId, FromPortRange, ToPortRange)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("%w cannot create securityGroupRule for OscCluster %s/%s", err, clusterScope.GetNamespace(), clusterScope.GetName())
 			}
-			securityGroupRuleRef.ResourceMap[securityGroupRuleName] = securityGroupFromSecurityGroupRule.GetSecurityGroupId()
+
+			securityGroupRuleRef.ResourceMap[securityGroupRuleName] = securityGroup.GetSecurityGroupId()
 		}
 
 		// for securityGroupRuleName, _ := range securityGroupRuleRef.ResourceMap {
