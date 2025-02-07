@@ -32,7 +32,6 @@ import (
 	osc "github.com/outscale/osc-sdk-go/v2"
 	corev1 "k8s.io/api/core/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -608,31 +607,10 @@ func reconcileVm(ctx context.Context, clusterScope *scope.ClusterScope, machineS
 
 // reconcileDeleteVm reconcile the destruction of the vm of the machine
 func reconcileDeleteVm(ctx context.Context, clusterScope *scope.ClusterScope, machineScope *scope.MachineScope, vmSvc compute.OscVmInterface, publicIpSvc security.OscPublicIpInterface, loadBalancerSvc service.OscLoadBalancerInterface, securityGroupSvc security.OscSecurityGroupInterface) (reconcile.Result, error) {
-	oscmachine := machineScope.OscMachine
 	vmSpec := machineScope.GetVm()
-	vmRef := machineScope.GetVmRef()
-	vmName := vmSpec.Name + "-" + machineScope.GetUID()
 	vmSpec.SetDefaultValue()
+	vmName := vmSpec.Name + "-" + machineScope.GetUID()
 	vmId := vmSpec.ResourceId
-	if vmId == "" { // We should not get in this situation but we sometimes do (To be investigated)
-		vmId = vmRef.ResourceMap[vmName]
-		vmSpec.ResourceId = vmId
-	}
-	if vmId == "" {
-		machineScope.V(2).Info("vm is already destroyed", "vmName", vmName)
-		controllerutil.RemoveFinalizer(machineScope.OscMachine, "")
-		return reconcile.Result{}, nil
-	}
-	machineScope.V(4).Info("Get vmId", "vmId", vmId)
-	vm, err := vmSvc.GetVm(vmId)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	if vm == nil {
-		machineScope.V(2).Info("The desired vm is already destroyed", "vmName", vmName)
-		controllerutil.RemoveFinalizer(oscmachine, "")
-		return reconcile.Result{}, nil
-	}
 
 	keypairSpec := machineScope.GetKeypair()
 	machineScope.V(4).Info("Check keypair", "keypair", keypairSpec.Name)
@@ -653,9 +631,8 @@ func reconcileDeleteVm(ctx context.Context, clusterScope *scope.ClusterScope, ma
 		linkPublicIpRef := machineScope.GetLinkPublicIpRef()
 		publicIpName := vmSpec.PublicIpName + "-" + clusterScope.GetUID()
 		// Keep for retro-compatibility; now publicIP are mounted with the tag osc.fcu.eip.auto-attach and unmounted at VM deletion
-		linkPublicIiId := linkPublicIpRef.ResourceMap[publicIpName]
-		if linkPublicIiId != "" {
-			err = publicIpSvc.UnlinkPublicIp(linkPublicIiId)
+		if linkPublicIiId, ok := linkPublicIpRef.ResourceMap[publicIpName]; ok {
+			err := publicIpSvc.UnlinkPublicIp(linkPublicIiId)
 			if err != nil {
 				return reconcile.Result{}, fmt.Errorf("%w Can not unlink publicIp for OscCluster %s/%s", err, machineScope.GetNamespace(), machineScope.GetName())
 			}
@@ -747,25 +724,36 @@ func reconcileDeleteVm(ctx context.Context, clusterScope *scope.ClusterScope, ma
 		}
 	}
 
-	if vm == nil {
-		machineScope.V(2).Info("The desired vm does not exist anymore", "vmName", vmName)
-		controllerutil.RemoveFinalizer(oscmachine, "")
-		return reconcile.Result{}, nil
+	if vmId == "" { // We should not get in this situation but we sometimes do (To be investigated)
+		vmRef := machineScope.GetVmRef()
+		vmId = vmRef.ResourceMap[vmName]
+		vmSpec.ResourceId = vmId
 	}
 
-	machineScope.V(2).Info("Delete the desired vm", "vmName", vmName)
-	err = vmSvc.DeleteVm(vmId)
-	if err != nil {
-		return reconcile.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("%w Can not delete vm for OscMachine %s/%s", err, machineScope.GetNamespace(), machineScope.GetName())
+	if vmId != "" {
+		machineScope.V(4).Info("Get vmId", "vmId", vmId)
+		vm, err := vmSvc.GetVm(vmId)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if vm != nil {
+			machineScope.V(2).Info("Delete the desired vm", "vmName", vmName)
+			err = vmSvc.DeleteVm(vmId)
+			if err != nil {
+				return reconcile.Result{RequeueAfter: 30 * time.Second}, fmt.Errorf("%w Can not delete vm for OscMachine %s/%s", err, machineScope.GetNamespace(), machineScope.GetName())
+			}
+		}
 	}
 
 	if vmSpec.PublicIp {
 		publicIpIdRef := machineScope.GetPublicIpIdRef()
 		publicIpName := vmSpec.PublicIpName + "-" + clusterScope.GetUID()
 		clusterScope.V(2).Info("Delete the desired Vm publicip", "publicIpName", publicIpName)
-		err = publicIpSvc.DeletePublicIp(publicIpIdRef.ResourceMap[publicIpName])
-		if err != nil {
-			return reconcile.Result{}, fmt.Errorf("%w Can not delete Vm publicIp for Osccluster %s/%s", err, clusterScope.GetNamespace(), clusterScope.GetName())
+		if publicIpId, ok := publicIpIdRef.ResourceMap[publicIpName]; ok {
+			err := publicIpSvc.DeletePublicIp(publicIpId)
+			if err != nil {
+				return reconcile.Result{}, fmt.Errorf("%w Can not delete Vm publicIp for Osccluster %s/%s", err, clusterScope.GetNamespace(), clusterScope.GetName())
+			}
 		}
 	}
 	vmSpec.ResourceId = ""

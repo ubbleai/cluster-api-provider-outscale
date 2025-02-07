@@ -3891,13 +3891,9 @@ func TestReconcileDeleteVmUnlinkPublicIp(t *testing.T) {
 	for _, vtc := range vmTestCases {
 		t.Run(vtc.name, func(t *testing.T) {
 			clusterScope, machineScope, ctx, mockOscVmInterface, _, mockOscPublicIpInterface, mockOscLoadBalancerInterface, mockOscSecurityGroupInterface, _ := SetupWithVmMock(t, vtc.name, vtc.clusterSpec, vtc.machineSpec)
-			vmName := vtc.machineSpec.Node.Vm.Name + "-uid"
-			vmId := "i-" + vmName
+
 			vmRef := machineScope.GetVmRef()
 			vmRef.ResourceMap = make(map[string]string)
-			if vtc.expGetVmFound {
-				vmRef.ResourceMap[vmName] = vmId
-			}
 
 			vmSecurityGroups := machineScope.GetVmSecurityGroups()
 			securityGroupsRef := clusterScope.GetSecurityGroupsRef()
@@ -3912,28 +3908,6 @@ func TestReconcileDeleteVmUnlinkPublicIp(t *testing.T) {
 			linkPublicIpRef := machineScope.GetLinkPublicIpRef()
 			linkPublicIpRef.ResourceMap = make(map[string]string)
 			linkPublicIpRef.ResourceMap[publicIpName] = linkPublicIpId
-
-			createVms := osc.CreateVmsResponse{
-				Vms: &[]osc.Vm{
-					{
-						VmId: &vmId,
-					},
-				},
-			}
-
-			createVm := *createVms.Vms
-			vm := &createVm[0]
-			if vtc.expGetVmFound {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(vm, vtc.expGetVmErr)
-			} else {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(nil, vtc.expGetVmErr)
-			}
 
 			if vtc.expCheckUnlinkPublicIpFound {
 				mockOscPublicIpInterface.
@@ -3967,7 +3941,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 		expDeleteInboundSecurityGroupRuleFound   bool
 		expDeleteOutboundSecurityGroupRuleFound  bool
 		expGetVmErr                              error
-		expGetVmFound                            bool
+		expGetVm                                 bool
 		expCheckUnlinkPublicIpErr                error
 		expReconcileDeleteVmErr                  error
 	}{
@@ -3981,7 +3955,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 			expDeleteInboundSecurityGroupRuleFound:   false,
 			expDeleteOutboundSecurityGroupRuleFound:  false,
 			expUnlinkLoadBalancerBackendMachineFound: true,
-			expGetVmFound:                            true,
+			expGetVm:                                 false,
 			expGetVmErr:                              nil,
 			expCheckUnlinkPublicIpErr:                nil,
 			expReconcileDeleteVmErr:                  fmt.Errorf("UnlinkLoadBalancerBackendMachineFound generic error Can not unlink vm test-loadbalancer with loadBalancerName i-test-vm-uid for OscCluster test-system/test-osc"),
@@ -3996,7 +3970,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 			expDeleteInboundSecurityGroupRuleFound:   false,
 			expDeleteOutboundSecurityGroupRuleFound:  true,
 			expUnlinkLoadBalancerBackendMachineFound: true,
-			expGetVmFound:                            true,
+			expGetVm:                                 false,
 			expGetVmErr:                              nil,
 			expCheckUnlinkPublicIpErr:                nil,
 			expReconcileDeleteVmErr:                  fmt.Errorf("DeleteSecurityGroupRule generic error Can not delete outbound securityGroupRule for OscCluster test-system/test-osc"),
@@ -4011,7 +3985,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 			expDeleteInboundSecurityGroupRuleFound:   true,
 			expDeleteOutboundSecurityGroupRuleFound:  true,
 			expUnlinkLoadBalancerBackendMachineFound: true,
-			expGetVmFound:                            false,
+			expGetVm:                                 true,
 			expGetVmErr:                              nil,
 			expCheckUnlinkPublicIpErr:                nil,
 			expReconcileDeleteVmErr:                  nil,
@@ -4024,7 +3998,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 			vmId := "i-" + vmName
 			vmRef := machineScope.GetVmRef()
 			vmRef.ResourceMap = make(map[string]string)
-			if vtc.expGetVmFound {
+			if vtc.expGetVm {
 				vmRef.ResourceMap[vmName] = vmId
 			}
 
@@ -4056,22 +4030,7 @@ func TestReconcileDeleteVmLoadBalancer(t *testing.T) {
 			securityGroupsRef.ResourceMap[loadBalancerSecurityGroupClusterScopeName] = loadBalancerSecurityGroupId
 			associateSecurityGroupId := securityGroupsRef.ResourceMap[loadBalancerSecurityGroupClusterScopeName]
 
-			createVms := osc.CreateVmsResponse{
-				Vms: &[]osc.Vm{
-					{
-						VmId: &vmId,
-					},
-				},
-			}
-
-			createVm := *createVms.Vms
-			vm := &createVm[0]
-			if vtc.expGetVmFound {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(vm, vtc.expGetVmErr)
-			} else {
+			if vtc.expGetVm {
 				mockOscVmInterface.
 					EXPECT().
 					GetVm(gomock.Eq(vmId)).
@@ -4130,19 +4089,10 @@ func TestReconcileDeleteVmResourceId(t *testing.T) {
 			name:                    "failed to find security group",
 			clusterSpec:             defaultVmClusterReconcile,
 			machineSpec:             defaultVmReconcile,
-			expGetVmFound:           true,
+			expGetVmFound:           false,
 			expGetVmErr:             nil,
 			expSecurityGroupFound:   false,
-			expReconcileDeleteVmErr: fmt.Errorf("test-securitygroup-uid does not exist"),
-		},
-		{
-			name:                    "failed to get vm",
-			clusterSpec:             defaultVmClusterReconcile,
-			machineSpec:             defaultVmReconcile,
-			expGetVmFound:           true,
-			expGetVmErr:             fmt.Errorf("GetVm generic error"),
-			expSecurityGroupFound:   false,
-			expReconcileDeleteVmErr: fmt.Errorf("GetVm generic error"),
+			expReconcileDeleteVmErr: fmt.Errorf("test-securitygroup-uid does not exist (yet)"),
 		},
 	}
 	for _, vtc := range vmTestCases {
@@ -4156,28 +4106,6 @@ func TestReconcileDeleteVmResourceId(t *testing.T) {
 				vmRef.ResourceMap[vmName] = vmId
 			}
 
-			createVms := osc.CreateVmsResponse{
-				Vms: &[]osc.Vm{
-					{
-						VmId: &vmId,
-					},
-				},
-			}
-
-			createVm := *createVms.Vms
-			vm := &createVm[0]
-			if vtc.expGetVmFound {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(vm, vtc.expGetVmErr)
-			} else {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(nil, vtc.expGetVmErr)
-			}
-
 			vmSecurityGroups := machineScope.GetVmSecurityGroups()
 			securityGroupsRef := clusterScope.GetSecurityGroupsRef()
 			securityGroupsRef.ResourceMap = make(map[string]string)
@@ -4188,6 +4116,7 @@ func TestReconcileDeleteVmResourceId(t *testing.T) {
 					securityGroupsRef.ResourceMap[securityGroupName] = securityGroupId
 				}
 			}
+
 			publicIpName := vtc.machineSpec.Node.Vm.PublicIpName + "-uid"
 			linkPublicIpId := "eipassoc-" + publicIpName
 			linkPublicIpRef := machineScope.GetLinkPublicIpRef()
@@ -4434,28 +4363,6 @@ func TestReconcileDeleteVmSecurityGroup(t *testing.T) {
 			loadBalancerSecurityGroupId := "sg-" + loadBalancerSecurityGroupClusterScopeName
 			securityGroupsRef.ResourceMap[loadBalancerSecurityGroupClusterScopeName] = loadBalancerSecurityGroupId
 			associateSecurityGroupId := securityGroupsRef.ResourceMap[loadBalancerSecurityGroupClusterScopeName]
-
-			createVms := osc.CreateVmsResponse{
-				Vms: &[]osc.Vm{
-					{
-						VmId: &vmId,
-					},
-				},
-			}
-
-			createVm := *createVms.Vms
-			vm := &createVm[0]
-			if vtc.expGetVmFound {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(vm, vtc.expGetVmErr)
-			} else {
-				mockOscVmInterface.
-					EXPECT().
-					GetVm(gomock.Eq(vmId)).
-					Return(nil, vtc.expGetVmErr)
-			}
 
 			mockOscPublicIpInterface.
 				EXPECT().
