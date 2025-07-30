@@ -44,14 +44,14 @@ func (s *Service) CreateSubnet(spec *infrastructurev1beta1.OscSubnet, netId stri
 	if err != nil {
 		return nil, err
 	}
-	subregionName, err := infrastructurev1beta1.ValidateSubregionName(spec.SubregionName)
+	err = infrastructurev1beta1.ValidateSubregionName(spec.SubregionName)
 	if err != nil {
 		return nil, err
 	}
 	subnetRequest := osc.CreateSubnetRequest{
 		IpRange:       ipSubnetRange,
 		NetId:         netId,
-		SubregionName: &subregionName,
+		SubregionName: &spec.SubregionName,
 	}
 	oscApiClient := s.scope.GetApi()
 	oscAuthClient := s.scope.GetAuth()
