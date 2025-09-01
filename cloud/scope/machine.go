@@ -147,17 +147,6 @@ func (m *MachineScope) GetVolume() []*infrastructurev1beta1.OscVolume {
 	return m.OscMachine.Spec.Node.Volumes
 }
 
-// GetVolumeSubregionName return the volume subregionName
-func (m *MachineScope) GetVolumeSubregionName(Name string) string {
-	volumes := m.OscMachine.Spec.Node.Volumes
-	for _, volume := range volumes {
-		if volume.Name == Name {
-			return volume.SubregionName
-		}
-	}
-	return ""
-}
-
 // GetVm return the vm
 func (m *MachineScope) GetVm() *infrastructurev1beta1.OscVm {
 	return &m.OscMachine.Spec.Node.Vm

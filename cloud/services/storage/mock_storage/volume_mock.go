@@ -6,7 +6,6 @@ package mock_storage
 
 import (
 	reflect "reflect"
-	time "time"
 
 	gomock "github.com/golang/mock/gomock"
 	v1beta1 "github.com/outscale-dev/cluster-api-provider-outscale.git/api/v1beta1"
@@ -36,33 +35,19 @@ func (m *MockOscVolumeInterface) EXPECT() *MockOscVolumeInterfaceMockRecorder {
 	return m.recorder
 }
 
-// CheckVolumeState mocks base method.
-func (m *MockOscVolumeInterface) CheckVolumeState(clockInsideLoop, clockLoop time.Duration, state, volumeId string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckVolumeState", clockInsideLoop, clockLoop, state, volumeId)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CheckVolumeState indicates an expected call of CheckVolumeState.
-func (mr *MockOscVolumeInterfaceMockRecorder) CheckVolumeState(clockInsideLoop, clockLoop, state, volumeId interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckVolumeState", reflect.TypeOf((*MockOscVolumeInterface)(nil).CheckVolumeState), clockInsideLoop, clockLoop, state, volumeId)
-}
-
 // CreateVolume mocks base method.
-func (m *MockOscVolumeInterface) CreateVolume(spec *v1beta1.OscVolume, volumeName string) (*osc.Volume, error) {
+func (m *MockOscVolumeInterface) CreateVolume(spec *v1beta1.OscVolume, volumeName, subregionName string) (*osc.Volume, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateVolume", spec, volumeName)
+	ret := m.ctrl.Call(m, "CreateVolume", spec, volumeName, subregionName)
 	ret0, _ := ret[0].(*osc.Volume)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateVolume indicates an expected call of CreateVolume.
-func (mr *MockOscVolumeInterfaceMockRecorder) CreateVolume(spec, volumeName interface{}) *gomock.Call {
+func (mr *MockOscVolumeInterfaceMockRecorder) CreateVolume(spec, volumeName, subregionName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockOscVolumeInterface)(nil).CreateVolume), spec, volumeName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVolume", reflect.TypeOf((*MockOscVolumeInterface)(nil).CreateVolume), spec, volumeName, subregionName)
 }
 
 // DeleteVolume mocks base method.
@@ -120,19 +105,4 @@ func (m *MockOscVolumeInterface) UnlinkVolume(volumeId string) error {
 func (mr *MockOscVolumeInterfaceMockRecorder) UnlinkVolume(volumeId interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlinkVolume", reflect.TypeOf((*MockOscVolumeInterface)(nil).UnlinkVolume), volumeId)
-}
-
-// ValidateVolumeIds mocks base method.
-func (m *MockOscVolumeInterface) ValidateVolumeIds(volumeIds []string) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateVolumeIds", volumeIds)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ValidateVolumeIds indicates an expected call of ValidateVolumeIds.
-func (mr *MockOscVolumeInterfaceMockRecorder) ValidateVolumeIds(volumeIds interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateVolumeIds", reflect.TypeOf((*MockOscVolumeInterface)(nil).ValidateVolumeIds), volumeIds)
 }

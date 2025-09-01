@@ -18,11 +18,11 @@ package security
 
 import (
 	"fmt"
+	_nethttp "net/http"
 
 	"github.com/outscale-dev/cluster-api-provider-outscale.git/util/reconciler"
 	osc "github.com/outscale/osc-sdk-go/v2"
 	"k8s.io/apimachinery/pkg/util/wait"
-	_nethttp "net/http"
 )
 
 type OscKeyPairInterface interface {
@@ -135,7 +135,7 @@ func (s *Service) GetKeyPair(keyPairName string) (*osc.Keypair, error) {
 
 // DeleteKeyPair delete machine keypair
 func (s *Service) DeleteKeyPair(keyPairName string) error {
-	deleteKeypairRequest := osc.DeleteKeypairRequest{KeypairName: keyPairName}
+	deleteKeypairRequest := osc.DeleteKeypairRequest{KeypairName: &keyPairName}
 	oscAPIClient := s.scope.GetApi()
 	oscAuthClient := s.scope.GetAuth()
 	deleteKeypairCallBack := func() (bool, error) {

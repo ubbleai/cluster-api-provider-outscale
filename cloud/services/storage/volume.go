@@ -21,30 +21,25 @@ import (
 	"fmt"
 	_nethttp "net/http"
 
-	"github.com/benbjohnson/clock"
 	infrastructurev1beta1 "github.com/outscale-dev/cluster-api-provider-outscale.git/api/v1beta1"
 	tag "github.com/outscale-dev/cluster-api-provider-outscale.git/cloud/tag"
 	"github.com/outscale-dev/cluster-api-provider-outscale.git/util/reconciler"
 	osc "github.com/outscale/osc-sdk-go/v2"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"time"
 )
 
 //go:generate ../../../bin/mockgen -destination mock_storage/volume_mock.go -package mock_storage -source ./volume.go
 type OscVolumeInterface interface {
-	CreateVolume(spec *infrastructurev1beta1.OscVolume, volumeName string) (*osc.Volume, error)
+	CreateVolume(spec *infrastructurev1beta1.OscVolume, volumeName string, subregionName string) (*osc.Volume, error)
 	DeleteVolume(volumeId string) error
 	GetVolume(volumeId string) (*osc.Volume, error)
-	ValidateVolumeIds(volumeIds []string) ([]string, error)
 	LinkVolume(volumeId string, vmId string, deviceName string) error
-	CheckVolumeState(clockInsideLoop time.Duration, clockLoop time.Duration, state string, volumeId string) error
 	UnlinkVolume(volumeId string) error
 }
 
 // CreateVolume create machine volume
-func (s *Service) CreateVolume(spec *infrastructurev1beta1.OscVolume, volumeName string) (*osc.Volume, error) {
+func (s *Service) CreateVolume(spec *infrastructurev1beta1.OscVolume, volumeName string, subregionName string) (*osc.Volume, error) {
 	size := spec.Size
-	subregionName := spec.SubregionName
 	volumeType := spec.VolumeType
 	volumeRequest := osc.CreateVolumeRequest{
 		Size:          &size,
@@ -258,79 +253,6 @@ func (s *Service) DeleteVolume(volumeId string) error {
 	waitErr := wait.ExponentialBackoff(backoff, deleteVolumeCallBack)
 	if waitErr != nil {
 		return waitErr
-	}
-	return nil
-}
-
-// ValidatePublicIpIds validate the list of id by checking each volume resource and return volume resource that currently exist
-func (s *Service) ValidateVolumeIds(volumeIds []string) ([]string, error) {
-	readVolumeRequest := osc.ReadVolumesRequest{
-		Filters: &osc.FiltersVolume{
-			VolumeIds: &volumeIds,
-		},
-	}
-	oscApiClient := s.scope.GetApi()
-	oscAuthClient := s.scope.GetAuth()
-	var readVolumesResponse osc.ReadVolumesResponse
-	readVolumesCallBack := func() (bool, error) {
-		var httpRes *_nethttp.Response
-		var err error
-		readVolumesResponse, httpRes, err = oscApiClient.VolumeApi.ReadVolumes(oscAuthClient).ReadVolumesRequest(readVolumeRequest).Execute()
-		if err != nil {
-			if httpRes != nil {
-				return false, fmt.Errorf("error %w httpRes %s", err, httpRes.Status)
-			}
-			requestStr := fmt.Sprintf("%v", readVolumeRequest)
-			if reconciler.KeepRetryWithError(
-				requestStr,
-				httpRes.StatusCode,
-				reconciler.ThrottlingErrors) {
-				return false, nil
-			}
-			return false, err
-		}
-		return true, err
-	}
-	backoff := reconciler.EnvBackoff()
-	waitErr := wait.ExponentialBackoff(backoff, readVolumesCallBack)
-	if waitErr != nil {
-		return nil, waitErr
-	}
-	var validVolumeIds []string
-	volumes, ok := readVolumesResponse.GetVolumesOk()
-	if !ok {
-		return nil, errors.New("Can not get volume")
-	}
-	if len(*volumes) != 0 {
-		for _, volume := range *volumes {
-			volumeId := volume.GetVolumeId()
-			validVolumeIds = append(validVolumeIds, volumeId)
-		}
-	}
-	return validVolumeIds, nil
-}
-
-// CheckVolumeState check volume in state
-func (s *Service) CheckVolumeState(clockInsideLoop time.Duration, clockLoop time.Duration, state string, volumeId string) error {
-	clock_time := clock.New()
-	currentTimeout := clock_time.Now().Add(time.Second * clockLoop)
-	var getVolumeState = false
-	for !getVolumeState {
-		volume, err := s.GetVolume(volumeId)
-		if err != nil {
-			return err
-		}
-		volumeState, ok := volume.GetStateOk()
-		if !ok {
-			return errors.New("Can not get volume state")
-		}
-		if *volumeState == state {
-			break
-		}
-		time.Sleep(clockInsideLoop * time.Second)
-		if clock_time.Now().After(currentTimeout) {
-			return fmt.Errorf("Volume still not in %s state", state)
-		}
 	}
 	return nil
 }

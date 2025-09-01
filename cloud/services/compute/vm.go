@@ -35,11 +35,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/utils/ptr"
 )
+
+const vmRootDeviceName = "/dev/sda1"
 
 //go:generate ../../../bin/mockgen -destination mock_compute/vm_mock.go -package mock_compute -source ./vm.go
 type OscVmInterface interface {
-	CreateVm(machineScope *scope.MachineScope, spec *infrastructurev1beta1.OscVm, subnetId string, securityGroupIds []string, privateIps []string, vmName string, tags map[string]string) (*osc.Vm, error)
+	CreateVm(machineScope *scope.MachineScope, spec *infrastructurev1beta1.OscVm, subnetId string, securityGroupIds []string, privateIps []string, vmName string, tags map[string]string, volumes []*infrastructurev1beta1.OscVolume) (*osc.Vm, error)
 	CreateVmUserData(userData string, spec *infrastructurev1beta1.OscBastion, subnetId string, securityGroupIds []string, privateIps []string, vmName string, imageId string) (*osc.Vm, error)
 	DeleteVm(vmId string) error
 	GetVm(vmId string) (*osc.Vm, error)
@@ -61,7 +64,7 @@ func ValidateIpAddrInCidr(ipAddr string, cidr string) (string, error) {
 }
 
 // CreateVm create machine vm
-func (s *Service) CreateVm(machineScope *scope.MachineScope, spec *infrastructurev1beta1.OscVm, subnetId string, securityGroupIds []string, privateIps []string, vmName string, tags map[string]string) (*osc.Vm, error) {
+func (s *Service) CreateVm(machineScope *scope.MachineScope, spec *infrastructurev1beta1.OscVm, subnetId string, securityGroupIds []string, privateIps []string, vmName string, tags map[string]string, volumes []*infrastructurev1beta1.OscVolume) (*osc.Vm, error) {
 	imageId := spec.ImageId
 	keypairName := spec.KeypairName
 	vmType := spec.VmType
@@ -69,7 +72,6 @@ func (s *Service) CreateVm(machineScope *scope.MachineScope, spec *infrastructur
 	rootDiskIops := spec.RootDisk.RootDiskIops
 	rootDiskSize := spec.RootDisk.RootDiskSize
 	rootDiskType := spec.RootDisk.RootDiskType
-	deviceName := spec.DeviceName
 
 	placement := osc.Placement{
 		SubregionName: &subregionName,
@@ -85,23 +87,37 @@ func (s *Service) CreateVm(machineScope *scope.MachineScope, spec *infrastructur
 			VolumeType: &rootDiskType,
 			VolumeSize: &rootDiskSize,
 		},
-		DeviceName: &deviceName,
+		DeviceName: ptr.To(vmRootDeviceName),
 	}
 	if rootDiskType == "io1" {
-		rootDisk.Bsu.SetIops(rootDiskIops)
+		rootDisk.Bsu.Iops = &rootDiskIops
+	}
+	volMappings := []osc.BlockDeviceMappingVmCreation{
+		rootDisk,
+	}
+	for _, vol := range volumes {
+		bsuVol := osc.BlockDeviceMappingVmCreation{
+			Bsu: &osc.BsuToCreate{
+				VolumeSize: &vol.Size,
+				VolumeType: &vol.VolumeType,
+			},
+			DeviceName: &vol.Device,
+		}
+		if vol.VolumeType == "io1" {
+			bsuVol.Bsu.Iops = &vol.Iops
+		}
+		volMappings = append(volMappings, bsuVol)
 	}
 
 	vmOpt := osc.CreateVmsRequest{
-		ImageId:          imageId,
-		KeypairName:      &keypairName,
-		VmType:           &vmType,
-		SubnetId:         &subnetId,
-		SecurityGroupIds: &securityGroupIds,
-		UserData:         &mergedUserDataEnc,
-		BlockDeviceMappings: &[]osc.BlockDeviceMappingVmCreation{
-			rootDisk,
-		},
-		Placement: &placement,
+		ImageId:             imageId,
+		KeypairName:         &keypairName,
+		VmType:              &vmType,
+		SubnetId:            &subnetId,
+		SecurityGroupIds:    &securityGroupIds,
+		UserData:            &mergedUserDataEnc,
+		BlockDeviceMappings: &volMappings,
+		Placement:           &placement,
 	}
 
 	if len(privateIps) > 0 {
@@ -187,7 +203,7 @@ func (s *Service) CreateVmUserData(userData string, spec *infrastructurev1beta1.
 		DeviceName: &deviceName,
 	}
 	if rootDiskType == "io1" {
-		rootDisk.Bsu.SetIops(rootDiskIops)
+		rootDisk.Bsu.Iops = &rootDiskIops
 	}
 
 	vmOpt := osc.CreateVmsRequest{

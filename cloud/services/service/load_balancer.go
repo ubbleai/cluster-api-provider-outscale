@@ -53,7 +53,7 @@ func (s *Service) GetName(spec *infrastructurev1beta1.OscLoadBalancer) (string, 
 		clusterName = infrastructurev1beta1.OscReplaceName(s.scope.GetName())
 		name = clusterName + "-" + "apiserver" + "-" + s.scope.GetUID()
 	}
-	_, err := infrastructurev1beta1.ValidateLoadBalancerName(name)
+	err := infrastructurev1beta1.ValidateLoadBalancerName(name)
 	if err != nil {
 		return "", err
 	}
